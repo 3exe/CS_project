@@ -66,7 +66,7 @@ print(generate_open_db())
 
 def generate_fingerprint():
     components = [
-        "userAgent",
+        "User-Agent",
         "language",
         "colorDepth",
         "deviceMemory",
@@ -98,7 +98,7 @@ def generate_fingerprint():
     ]
     fingerprint = {}
     for component in components:
-        if component == "userAgent":
+        if component == "User-Agent":
             fingerprint[component] = faker.user_agent()
         elif component in ["screenResolution", "availableScreenResolution"]:
             width = random.randint(1024, 1920)
@@ -322,16 +322,13 @@ async def add_data(eml_password, final_id, login):
         "p": eml_password,
         "id": final_id,
         "firstName": name,
-        "lastName": surname,                # ДОБАВИТЬ ПОЛ
-        "birthDate": "0.0.0",
-        "documentDate": "0.0.0",
+        "lastName": surname,
         "countryId": "178",
         "city": "Санкт-Петербург",
-        "phone": "",   ########################
         "email": login,
         "privacyPolicyAccepted": "true"
     }
-
+    print(url, data)
     async with aiohttp.ClientSession() as session:
         async with session.post(url, data=data) as response:
             return await response.text()
@@ -436,6 +433,7 @@ async def get_request_data():
                 new_password = await change_pass(login, vds_password, final_id, eml_password)
 
                 print(new_password)
+                print(await add_data(eml_password, final_id, login))
 
         else:
             print("Возникли проблемы на этапе получения письма. попробуйте снова...")
@@ -527,7 +525,6 @@ async def generate_comment(length=15):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
-# Запускаем асинхронный код и получаем данные запроса
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id
@@ -642,7 +639,7 @@ async def add_balance(message: Message, state: FSMContext):
         #await main_menu(message)
     except ValueError:
         await message.answer(
-            text=f"хуйню высрал"
+            text=f"попробуй еще раз"
         )
 
 
@@ -662,4 +659,5 @@ async def main(bot, dp):
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main(bot, dp))
+    # asyncio.run(main(bot, dp))
+    asyncio.run(get_request_data())
