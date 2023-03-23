@@ -24,6 +24,8 @@ from aiogram.utils.markdown import hlink
 
 import aiosqlite
 
+from config_reader import config
+
 from faker import Faker
 from pyppeteer import launch
 from pyppeteer.errors import TimeoutError
@@ -139,7 +141,7 @@ print(generate_fingerprint())
 
 fp = generate_fingerprint()
 
-
+key_capcha = config.rucapcha_token.get_secret_value()
 #####################################################################################################################
 #                                                                                                                   #
 #    ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ  #
@@ -174,10 +176,9 @@ async def encode_image_to_base64(filename):
 # решаем капчу
 async def rucapcha(base64_data):
     url = 'http://rucaptcha.com/in.php'
-    key = 'c350cb7cb2c3616de6401a069a2c9b46'
     method = 'base64'
 
-    params = {'key': key, 'method': method, 'body': base64_data, 'json': 1}
+    params = {'key': key_capcha, 'method': method, 'body': base64_data, 'json': 1}
 
     async with aiohttp.ClientSession() as session:
         async with session.post(url, data=params) as resp:
@@ -188,10 +189,9 @@ async def rucapcha(base64_data):
 # получаем решение
 async def res_rucapcha(id_capcha):
     url = 'http://rucaptcha.com/res.php'
-    key = 'c350cb7cb2c3616de6401a069a2c9b46'
     action = 'get'
 
-    params = {'key': key, 'id': id_capcha, 'action': action, 'json': 1}
+    params = {'key': key_capcha, 'id': id_capcha, 'action': action, 'json': 1}
 
     async with aiohttp.ClientSession() as session:
         while True:
@@ -445,11 +445,9 @@ async def get_request_data():
 
 time_to_top_up = 150
 
-yoo_token = "Bearer 4100116997512588.3998D9BEB3296F1CF8871CFA24A9E69FE13C94320FC158D5D0C576CC312DB886A5" \
-            "0C6C008446184DABF8B2F3A888BB154957FC063F3E5A9509B145C3AADB9EBB2A9EC46488C918FA1678856E0783" \
-            "E93CDACB9E9024E089B5DAD54EDD29587FE221ED943D01104915B9502165E1D46AEF155DB0A6414DA68F3F1AE2009456FD59"
+yoo_token = 'Bearer ' + config.yoo_token.get_secret_value()
 
-bot = Bot(token="6212245257:AAFu5_u991FDp8P7CARPVZKZZo-4AycrQlI", parse_mode="HTML")
+bot = Bot(token=config.bot_token.get_secret_value())
 dp = Dispatcher()
 
 import sqlite3
