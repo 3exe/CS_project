@@ -8,6 +8,7 @@ import random
 import re
 import string
 import time
+import datetime
 
 import aiofiles
 import aiohttp
@@ -21,12 +22,13 @@ from aiogram.types import Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import hlink
 
+import aiosqlite
+
 from faker import Faker
 from pyppeteer import launch
 from pyppeteer.errors import TimeoutError
 
 faker = Faker()
-
 
 logging.basicConfig(level=logging.INFO)
 
@@ -137,6 +139,7 @@ print(generate_fingerprint())
 
 fp = generate_fingerprint()
 
+
 #####################################################################################################################
 #                                                                                                                   #
 #    ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ ПЕРЕДЕЛАТЬ  #
@@ -163,7 +166,6 @@ async def download_file(url: str, file_path: str):
 async def encode_image_to_base64(filename):
     with open(filename, 'rb') as file:
         image_data = file.read()
-        file.close()
     encoded_data = base64.b64encode(image_data)
     os.remove(filename)
     return encoded_data.decode('utf-8')
@@ -222,7 +224,7 @@ async def get_latest_email(login, password):
 
     sender = ''
     for i in range(10):
-        print(f'попытка номер: {i+1}')
+        print(f'попытка номер: {i + 1}')
         status, data = mail.search(None, 'ALL')
         mail_ids = data[0].split()
         latest_email_id = mail_ids[-1]
@@ -290,7 +292,6 @@ async def generate_random_last_name():
 
 # смена пароля от аккаунта RuVds (обязательная процедура перед регистрацией)
 async def change_pass(login, password, final_id, eml_password):
-
     result_task = asyncio.create_task(generate_r())
     r = await result_task
 
@@ -308,7 +309,6 @@ async def change_pass(login, password, final_id, eml_password):
 
 # добавления имени, фамилии и номера телефона в аккаунт (обязательно для использования тестового периода)
 async def add_data(eml_password, final_id, login):
-
     result_task = asyncio.create_task(generate_r())
     result_task2 = asyncio.create_task(generate_random_first_name())
     result_task3 = asyncio.create_task(generate_random_last_name())
@@ -335,13 +335,12 @@ async def add_data(eml_password, final_id, login):
 
 
 async def get_request_data():
-
     future = asyncio.Future()
 
     browser = await launch(headless=False, args=['--no-sandbox'])
 
     page = await browser.newPage()
-    await page.setViewport({'width': random.randint(1024, 1920), 'height': random.randint(768, 1080)}) ############
+    await page.setViewport({'width': random.randint(1024, 1920), 'height': random.randint(768, 1080)})  ############
     await page.setExtraHTTPHeaders(fp)
 
     await page.goto('https://ruvds.com/ru-rub')
@@ -354,8 +353,8 @@ async def get_request_data():
     )
     src = await page.querySelectorEval('.ttb', 'el => el.getAttribute("src")')
     # скачиваем капчу
-    file_path = f'file{random.randint(0,9999999)}.jpg'                       ######################
-    await download_file('https://ruvds.com/'+src, file_path)
+    file_path = f'file{random.randint(0, 9999999)}.jpg'  ######################
+    await download_file('https://ruvds.com/' + src, file_path)
 
     # преобразуем файл капчи в base64
     result_task = asyncio.create_task(encode_image_to_base64(file_path))
@@ -444,27 +443,26 @@ async def get_request_data():
 
 
 
+time_to_top_up = 150
 
-
-
-
-
-
-
-
+yoo_token = "Bearer 4100116997512588.3998D9BEB3296F1CF8871CFA24A9E69FE13C94320FC158D5D0C576CC312DB886A5" \
+            "0C6C008446184DABF8B2F3A888BB154957FC063F3E5A9509B145C3AADB9EBB2A9EC46488C918FA1678856E0783" \
+            "E93CDACB9E9024E089B5DAD54EDD29587FE221ED943D01104915B9502165E1D46AEF155DB0A6414DA68F3F1AE2009456FD59"
 
 bot = Bot(token="6212245257:AAFu5_u991FDp8P7CARPVZKZZo-4AycrQlI", parse_mode="HTML")
 dp = Dispatcher()
 
+import sqlite3
 
-from sqlite_utils import Database
-db = Database("users.db")
+db = sqlite3.connect("users.db")
+cur = db.cursor()
 router = Router()
 
 
 class AddBalance(StatesGroup):
     choosing_payment_type = State()
     choosing_sum = State()
+    check_transaction = State()
 
 
 async def wallet():
@@ -487,7 +485,6 @@ async def user_profile(message):
     )
     user_id = message.from_user.id
 
-    global db
     balance = await asyncio.create_task(get_balance(user_id))
 
     profile_message = f'Вы перешли в профиль.\nВаш id: {user_id}\nВаш баланс: {balance} руб.'
@@ -515,33 +512,30 @@ async def main_menu(message):
 
 # получаем баланс пользователя
 async def get_balance(user_id):
-    global db
-    balance = db.execute(f"SELECT balance FROM users WHERE user_id = ?", (user_id,)).fetchall()[0][0]
+    balance = cur.execute(f"SELECT balance FROM users WHERE user_id = ?", (user_id,)).fetchall()[0][0]
     return balance
 
 
 async def generate_comment(length=15):
-
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
 @dp.message(Command("start"))
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     # user_name = message.from_user.first_name
     user_full_name = message.from_user.full_name
     logging.info(f'{user_id} {user_full_name} {time.asctime()}')
     await main_menu(message)
 
-    global db
-    db["users"].insert_all([{
-        "user_id": user_id,
-    }])
+    await state.clear()
 
+    command = "INSERT INTO users VALUES(?, ?, ?, ?)"
+    cur.execute(command, (user_id, 0, '[]', None))
+    db.commit()
 
-
-    #await message.reply("Запуск!")
-    #result_task = await asyncio.create_task(get_request_data())
+    # await message.reply("Запуск!")
+    # result_task = await asyncio.create_task(get_request_data())
 
 
 @dp.message(Text("Назад"))
@@ -563,6 +557,7 @@ async def cmd_start(message: types.Message):
 
 
 available_payment_type = ["Из кошелька ЮMoney", "С банковской карты"]
+check_transaction_buttons = ["Я оплатил/а", "Отмена оплаты"]
 
 
 @dp.message(Text("Пополнить баланс"))
@@ -598,66 +593,162 @@ async def payment_type_chosen(message: Message, state: FSMContext):
 
 @dp.message(AddBalance.choosing_payment_type)
 async def payment_type_chosen_incorrectly(message: Message):
-
     await message.answer(
         text="Я не знаю такого способа оплаты.\n"
              "Пожалуйста, выберите из списка ниже:"
     )
 
 
+async def wait_add_balance(message):
+    await asyncio.sleep(time_to_top_up * 60)
+
+    command = "UPDATE users SET payment_info = ? WHERE user_id = ?"
+    cur.execute(command, (None, message.from_user.id))
+    db.commit()
+
+    await message.answer(
+        text="Время на оплату вышло!")
+
+
 @dp.message(AddBalance.choosing_sum)
 async def add_balance(message: Message, state: FSMContext):
     user_data = await state.get_data()
     try:
-        add_sum = float(message.text)*1
+        add_sum = float(message.text) * 1
+        add_sum = abs(round(add_sum, 1))
 
-        builder = InlineKeyboardBuilder()
-        builder.add(types.InlineKeyboardButton(
-            text="Я оплатил/а",
-            callback_data="check_transaction")
+        if add_sum < 10.0 or add_sum > 5000.0:
+            await message.answer(text=f"Сумма должна быть больше 10 и меньше 5000 !!1")
+            return
+
+        buttons = [
+            [
+                types.KeyboardButton(text="Я оплатил/а"),
+                types.KeyboardButton(text="Отмена оплаты")
+            ],
+        ]
+        keyboard = types.ReplyKeyboardMarkup(
+            keyboard=buttons,
+            resize_keyboard=True,
         )
 
         comment = await generate_comment()
 
-        payment_type = 'AC'
+        payment_type = 'PC' if user_data['chosen_type'] == "из кошелька юmoney" else 'AC'
 
-        if user_data['chosen_type'] == "из кошелька юmoney":
-            payment_type = 'PC'
+        kom = 0.03
+        if payment_type == 'PC':
+            kom = 0.01
 
+        yoo_sum = add_sum + (add_sum * kom)
         add_balance_link = f'https://yoomoney.ru/quickpay/confirm.xml?receiver={await wallet()}&quickpay-form=button' \
-            f'&paymentType={payment_type}&sum={add_sum}' \
-            f'&successURL=https://t.me/dedikfree_bot&label={comment}'
+                           f'&paymentType={payment_type}&sum={yoo_sum}' \
+                           f'&successURL=https://t.me/dedikfree_bot&label={comment}'
 
         await message.answer(
             text=f"<b>Вы пополняете баланс на: {add_sum} рублей.\nМетод оплаты: {user_data['chosen_type']}.\n</b>"
-                 f"Для оплаты перейдите по {hlink('ссылке', add_balance_link)}",
-            reply_markup=builder.as_markup()
+                 f"Для оплаты перейдите по {hlink('ссылке', add_balance_link)}\n"
+                 f"На оплату у Вас <b>{time_to_top_up} минут.</b>",
+            reply_markup=keyboard,
         )
+
+        payment_info = f'{add_sum} {comment}'
+        user_id = message.from_user.id
+
+        command = "UPDATE users SET payment_info = ? WHERE user_id = ?"
+        cur.execute(command, (payment_info, user_id))
+        db.commit()
+
         # сброс состояния и сохранённых данных у пользователя
         await state.clear()
-        #await state.update_data(comment=comment)
-        #await main_menu(message)
+
+        asyncio.create_task(wait_add_balance(message))
+        await state.set_state(AddBalance.check_transaction)
+
     except ValueError:
         await message.answer(
             text=f"попробуй еще раз"
         )
 
 
-@dp.callback_query()
-async def send_random_value(callback: types.CallbackQuery):
-    await callback.message.answer(str(random.randint(1, 10)))
-    await callback.answer(
-        text="спасибо, что воспользовались ботом!",
-        show_alert=True
-    )
+async def yoo_check():
+    headers = {
+        "Authorization": yoo_token,
+    }
+
+    date = datetime.datetime.now() - datetime.timedelta(minutes=time_to_top_up)
+    date = date.isoformat()
+    params = {
+        "type": "deposition",
+        "response_type": "code",
+        "redirect_uri": "https://www.blessed.tk",
+        "scope": "account-info operation-history",
+        "from": date,
+
+    }
+
+    url = 'https://yoomoney.ru/api/operation-history'
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, data=params, headers=headers) as resp:
+            response_text = await resp.json()
+            return response_text["operations"]
+
+
+@dp.message(AddBalance.check_transaction, Text(check_transaction_buttons[0]))
+async def add_balance(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    data = cur.execute(f"SELECT payment_info FROM users WHERE user_id = ?", (user_id,)).fetchall()[0][0]
+    balance = await get_balance(user_id)
+
+    if data:
+        data = data.split()
+        await message.answer(text=f"{data}")
+
+        result_list = await yoo_check()
+
+        for i in result_list:
+            amount = float(round(i["amount"], 1))
+            label = i["label"]
+
+            if float(data[0]) == amount and data[1] == label:
+                await state.clear()
+                command = "UPDATE users SET balance = ? WHERE user_id = ?"
+                cur.execute(command, (round(amount + balance, 1), user_id))
+                db.commit()
+                await message.answer(text=f"На ваш баланс зачислено {amount} рублей !!1")
+                await main_menu(message)
+                return
+        else:
+            await message.answer(text=f"Пополнение не найдено")
+
+    else:
+        await message.answer(text=f"Время на оплату вышло!!1")
+        await state.clear()
+        await main_menu(message)
+
+
+@dp.message(AddBalance.check_transaction, Text(check_transaction_buttons[1]))
+async def add_balance(message: Message, state: FSMContext):
+    command = "UPDATE users SET payment_info = ? WHERE user_id = ?"
+    cur.execute(command, (None, message.from_user.id))
+    db.commit()
+
+    await state.clear()
+    await main_menu(message)
+
+
+@dp.message(AddBalance.check_transaction)
+async def add_balance(message: Message):
+    await message.answer(text=f"ватафак")
 
 
 async def main(bot, dp):
-
     # Запускаем бота и пропускаем все накопленные входящие
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
+
 if __name__ == "__main__":
-    # asyncio.run(main(bot, dp))
-    asyncio.run(get_request_data())
+    asyncio.run(main(bot, dp))
+    # asyncio.run(get_request_data())
