@@ -9,6 +9,7 @@ import re
 import string
 import time
 import datetime
+import sqlite3
 
 import aiofiles
 import aiohttp
@@ -19,10 +20,10 @@ from aiogram.filters.command import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import Message
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+# from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import hlink
 
-import aiosqlite
+# import aiosqlite
 
 from config_reader import config
 
@@ -222,7 +223,6 @@ async def get_latest_email(login, password):
     mail.login(login, password)
     mail.select('inbox')
 
-    sender = ''
     for i in range(10):
         print(f'попытка номер: {i + 1}')
         status, data = mail.search(None, 'ALL')
@@ -236,16 +236,15 @@ async def get_latest_email(login, password):
         sender = email.utils.parseaddr(email_message['From'])[1]
         print(sender)
         if sender == 'info@ruvds.com':
-            break
+            mail.close()
+            mail.logout()
+            return email_message.get_payload(decode=True)
 
         await asyncio.sleep(10)
 
-    mail.close()
-    mail.logout()
-
-    if sender == 'info@ruvds.com':
-        return email_message.get_payload(decode=True)
     else:
+        mail.close()
+        mail.logout()
         return None
 
 
@@ -340,7 +339,7 @@ async def get_request_data():
     browser = await launch(headless=False, args=['--no-sandbox'])
 
     page = await browser.newPage()
-    await page.setViewport({'width': random.randint(1024, 1920), 'height': random.randint(768, 1080)})  ############
+    await page.setViewport({'width': random.randint(1024, 1920), 'height': random.randint(768, 1080)})  # ###########
     await page.setExtraHTTPHeaders(fp)
 
     await page.goto('https://ruvds.com/ru-rub')
@@ -353,7 +352,7 @@ async def get_request_data():
     )
     src = await page.querySelectorEval('.ttb', 'el => el.getAttribute("src")')
     # скачиваем капчу
-    file_path = f'file{random.randint(0, 9999999)}.jpg'  ######################
+    file_path = f'file{random.randint(0, 9999999)}.jpg'  # #####################
     await download_file('https://ruvds.com/' + src, file_path)
 
     # преобразуем файл капчи в base64
@@ -423,7 +422,7 @@ async def get_request_data():
         latest_email = await get_latest_email(login, eml_password)
         if latest_email:
             unicode_string = latest_email.decode('utf-8')
-            match = re.search(r'Ваш пароль:</span> <strong>\s*(.*?)\s*</', unicode_string)
+            match = re.search(r'Ваш пароль:</span> <strong>.*</', unicode_string)  # \s*(.*?)\s*
 
             if match:
                 vds_password = match.group(1)
@@ -442,15 +441,16 @@ async def get_request_data():
         print('Element not found!')
 
 
+#
 
-time_to_top_up = 150
+time_to_top_up = 1
 
 yoo_token = 'Bearer ' + config.yoo_token.get_secret_value()
 
-bot = Bot(token=config.bot_token.get_secret_value())
+bot = Bot(token=config.bot_token.get_secret_value(), parse_mode='HTML')
 dp = Dispatcher()
 
-import sqlite3
+#
 
 db = sqlite3.connect("users.db")
 cur = db.cursor()
@@ -524,12 +524,13 @@ async def cmd_start(message: types.Message, state: FSMContext):
     # user_name = message.from_user.first_name
     user_full_name = message.from_user.full_name
     logging.info(f'{user_id} {user_full_name} {time.asctime()}')
-    await main_menu(message)
 
     await state.clear()
 
-    command = "INSERT INTO users VALUES(?, ?, ?, ?)"
-    cur.execute(command, (user_id, 0, '[]', None))
+    await main_menu(message)
+
+    command = "INSERT INTO users (user_id) VALUES(?)"
+    cur.execute(command, (user_id, ))
     db.commit()
 
     # await message.reply("Запуск!")
@@ -537,46 +538,14 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
 
 @dp.message(Text("Назад"))
-async def cmd_start(message: types.Message):
-    user_id = message.from_user.id
-    # user_name = message.from_user.first_name
+async def cmd_start(message: types.Message, state: FSMContext):
 
+    await state.clear()
     await main_menu(message)
-
-
-@dp.message(Text("Поддержка"))
-async def cmd_start(message: types.Message):
-    await message.answer("По всем вопросам @root112")
-
-
-@dp.message(Text("Профиль"))
-async def cmd_start(message: types.Message):
-    await user_profile(message)
 
 
 available_payment_type = ["Из кошелька ЮMoney", "С банковской карты"]
 check_transaction_buttons = ["Я оплатил/а", "Отмена оплаты"]
-
-
-@dp.message(Text("Пополнить баланс"))
-async def cmd_food(message: Message, state: FSMContext):
-    buttons = [
-        [
-            types.KeyboardButton(text="Из кошелька ЮMoney"),
-            types.KeyboardButton(text="С банковской карты")
-        ],
-    ]
-    keyboard = types.ReplyKeyboardMarkup(
-        keyboard=buttons,
-        resize_keyboard=True,
-    )
-
-    await message.answer(
-        text="Выберите метод оплаты:",
-        reply_markup=keyboard
-    )
-    # Устанавливаем пользователю состояние
-    await state.set_state(AddBalance.choosing_payment_type)
 
 
 @dp.message(AddBalance.choosing_payment_type, F.text.in_(available_payment_type))
@@ -600,12 +569,15 @@ async def payment_type_chosen_incorrectly(message: Message):
 async def wait_add_balance(message):
     await asyncio.sleep(time_to_top_up * 60)
 
-    command = "UPDATE users SET payment_info = ? WHERE user_id = ?"
-    cur.execute(command, (None, message.from_user.id))
-    db.commit()
+    user_id = message.from_user.id
+    flag = cur.execute(f"SELECT paid_flag FROM users WHERE user_id = ?", (user_id, )).fetchall()[0][0]
 
-    await message.answer(
-        text="Время на оплату вышло!")
+    if flag:
+        command = "UPDATE users SET payment_info = ? WHERE user_id = ?"
+        cur.execute(command, (None, message.from_user.id))
+        db.commit()
+
+        await message.answer(text="Время на оплату вышло!")
 
 
 @dp.message(AddBalance.choosing_sum)
@@ -643,19 +615,18 @@ async def add_balance(message: Message, state: FSMContext):
                            f'&paymentType={payment_type}&sum={yoo_sum}' \
                            f'&successURL=https://t.me/dedikfree_bot&label={comment}'
 
+        payment_info = f'{add_sum} {comment}'
+        user_id = message.from_user.id
+        command = "UPDATE users SET payment_info = ?, paid_flag = ? WHERE user_id = ?"
+        cur.execute(command, (payment_info, 1, user_id))
+        db.commit()
+
         await message.answer(
             text=f"<b>Вы пополняете баланс на: {add_sum} рублей.\nМетод оплаты: {user_data['chosen_type']}.\n</b>"
                  f"Для оплаты перейдите по {hlink('ссылке', add_balance_link)}\n"
                  f"На оплату у Вас <b>{time_to_top_up} минут.</b>",
             reply_markup=keyboard,
         )
-
-        payment_info = f'{add_sum} {comment}'
-        user_id = message.from_user.id
-
-        command = "UPDATE users SET payment_info = ? WHERE user_id = ?"
-        cur.execute(command, (payment_info, user_id))
-        db.commit()
 
         # сброс состояния и сохранённых данных у пользователя
         await state.clear()
@@ -711,8 +682,8 @@ async def add_balance(message: Message, state: FSMContext):
 
             if float(data[0]) == amount and data[1] == label:
                 await state.clear()
-                command = "UPDATE users SET balance = ? WHERE user_id = ?"
-                cur.execute(command, (round(amount + balance, 1), user_id))
+                command = "UPDATE users SET balance = ?, paid_flag = ? WHERE user_id = ?"
+                cur.execute(command, (round(amount + balance, 1), 0, user_id))
                 db.commit()
                 await message.answer(text=f"На ваш баланс зачислено {amount} рублей !!1")
                 await main_menu(message)
@@ -728,8 +699,8 @@ async def add_balance(message: Message, state: FSMContext):
 
 @dp.message(AddBalance.check_transaction, Text(check_transaction_buttons[1]))
 async def add_balance(message: Message, state: FSMContext):
-    command = "UPDATE users SET payment_info = ? WHERE user_id = ?"
-    cur.execute(command, (None, message.from_user.id))
+    command = "UPDATE users SET payment_info = ?, paid_flag = ? WHERE user_id = ?"
+    cur.execute(command, (None, 0, message.from_user.id))
     db.commit()
 
     await state.clear()
@@ -741,12 +712,108 @@ async def add_balance(message: Message):
     await message.answer(text=f"ватафак")
 
 
-async def main(bot, dp):
+@dp.message(Text("Пополнить баланс"))
+async def add_balance(message: Message, state: FSMContext):
+    buttons = [
+        [
+            types.KeyboardButton(text="Из кошелька ЮMoney"),
+            types.KeyboardButton(text="С банковской карты")
+        ],
+        [
+            types.KeyboardButton(text="Назад"),
+        ],
+    ]
+    keyboard = types.ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True,
+    )
+
+    await message.answer(
+        text="Выберите метод оплаты:",
+        reply_markup=keyboard
+    )
+    # Устанавливаем пользователю состояние
+    await state.set_state(AddBalance.choosing_payment_type)
+
+
+@dp.message(Text("Поддержка"))
+async def helping(message: types.Message):
+    await message.answer("По всем вопросам @root112")
+
+
+@dp.message(Text("Профиль"))
+async def profile(message: types.Message):
+    await user_profile(message)
+
+
+@dp.message(Text("Список покупок"))
+async def goods_list(message: types.Message):
+    user_id = message.from_user.id
+
+    data = cur.execute(f"SELECT shop_list FROM users WHERE user_id = ?", (user_id,)).fetchall()[0][0]
+
+    if data:
+        pass                                                                # ТУТ СПИСОК ПОКУПОК
+    else:
+        await message.answer(text=f"У Вас нет покупок...")
+
+
+class ChoosingGoods(StatesGroup):
+    choosing_goods = State()
+
+
+@dp.message(Text("Купить"))
+async def buy(message: types.Message, state: FSMContext):
+    cur.execute("SELECT title, price FROM goods")
+    rows = cur.fetchall()
+
+    buttons = []
+    for row in rows:
+        text = f"{row[0]} | {row[1]} руб."
+        product = [
+            types.KeyboardButton(text=text),
+        ]
+        buttons.append(product)
+    buttons.append([types.KeyboardButton(text=f"Назад"), ])
+    keyboard = types.ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True,
+        input_field_placeholder="Выберите товар"
+    )
+
+    await state.set_state(ChoosingGoods.choosing_goods)
+    await message.answer(f"Выберите товар:", reply_markup=keyboard)
+
+
+@dp.message(ChoosingGoods.choosing_goods)
+async def pay(message: Message, state: FSMContext):
+    cur.execute("SELECT title, price FROM goods")
+    rows = cur.fetchall()
+
+    goods = []
+    for row in rows:
+        text = f"{row[0]} | {row[1]} руб."
+        goods.append(text)
+
+    if message.text in goods:
+        buttons = [[types.KeyboardButton(text="Подтвердить покупку"), ], ]
+        keyboard = types.ReplyKeyboardMarkup(
+            keyboard=buttons,
+            resize_keyboard=True,
+        )
+
+        title = message.text.split(' | ')[0]
+        data = cur.execute(f"SELECT * FROM goods WHERE title = ?", (title, )).fetchall()[0]
+        await message.answer(text=f'<b>Наименование товара:</b> {data[1]}\n'
+                                  f'<b>Цена:</b> {data[2]}\n<b>Описание:</b>\n{data[3]}', reply_markup=keyboard)
+
+
+async def main():
     # Запускаем бота и пропускаем все накопленные входящие
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    asyncio.run(main(bot, dp))
+    asyncio.run(main())
     # asyncio.run(get_request_data())
