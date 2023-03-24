@@ -595,7 +595,9 @@ async def pay(message: Message, state: FSMContext):
         goods.append(text)
 
     if message.text in goods:
-        buttons = [[types.KeyboardButton(text="Подтвердить покупку"), ], ]
+        buttons = [[types.KeyboardButton(text="Подтвердить покупку"), ],
+                   [types.KeyboardButton(text="Назад")], ]
+
         keyboard = types.ReplyKeyboardMarkup(
             keyboard=buttons,
             resize_keyboard=True,
