@@ -20,10 +20,8 @@ from aiogram.filters.command import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import Message
-# from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.utils.markdown import hlink
 
-# import aiosqlite
+from aiogram.utils.markdown import hlink
 
 from config_reader import config
 
