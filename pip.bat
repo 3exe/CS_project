@@ -6,7 +6,7 @@ pip install aiofiles
 
 pip install aiohttp
 
-pip install aiogram
+pip install aiogram==3.0.0b7
 
 pip install faker
 
