@@ -463,6 +463,10 @@ class AddBalance(StatesGroup):
     check_transaction = State()
 
 
+class ChoosingGoods(StatesGroup):
+    choosing_goods = State()
+
+
 async def wallet():
     return '4100116997512588'
 
@@ -578,6 +582,29 @@ async def wait_add_balance(message):
         db.commit()
 
         await message.answer(text="Время на оплату вышло!")
+
+
+@dp.message(ChoosingGoods.choosing_goods)
+async def pay(message: Message, state: FSMContext):
+    cur.execute("SELECT title, price FROM goods")
+    rows = cur.fetchall()
+
+    goods = []
+    for row in rows:
+        text = f"{row[0]} | {row[1]} руб."
+        goods.append(text)
+
+    if message.text in goods:
+        buttons = [[types.KeyboardButton(text="Подтвердить покупку"), ], ]
+        keyboard = types.ReplyKeyboardMarkup(
+            keyboard=buttons,
+            resize_keyboard=True,
+        )
+
+        title = message.text.split(' | ')[0]
+        data = cur.execute(f"SELECT * FROM goods WHERE title = ?", (title, )).fetchall()[0]
+        await message.answer(text=f'<b>Наименование товара:</b> {data[1]}\n'
+                                  f'<b>Цена:</b> {data[2]}\n<b>Описание:</b>\n{data[3]}', reply_markup=keyboard)
 
 
 @dp.message(AddBalance.choosing_sum)
@@ -758,10 +785,6 @@ async def goods_list(message: types.Message):
         await message.answer(text=f"У Вас нет покупок...")
 
 
-class ChoosingGoods(StatesGroup):
-    choosing_goods = State()
-
-
 @dp.message(Text("Купить"))
 async def buy(message: types.Message, state: FSMContext):
     cur.execute("SELECT title, price FROM goods")
@@ -783,29 +806,6 @@ async def buy(message: types.Message, state: FSMContext):
 
     await state.set_state(ChoosingGoods.choosing_goods)
     await message.answer(f"Выберите товар:", reply_markup=keyboard)
-
-
-@dp.message(ChoosingGoods.choosing_goods)
-async def pay(message: Message, state: FSMContext):
-    cur.execute("SELECT title, price FROM goods")
-    rows = cur.fetchall()
-
-    goods = []
-    for row in rows:
-        text = f"{row[0]} | {row[1]} руб."
-        goods.append(text)
-
-    if message.text in goods:
-        buttons = [[types.KeyboardButton(text="Подтвердить покупку"), ], ]
-        keyboard = types.ReplyKeyboardMarkup(
-            keyboard=buttons,
-            resize_keyboard=True,
-        )
-
-        title = message.text.split(' | ')[0]
-        data = cur.execute(f"SELECT * FROM goods WHERE title = ?", (title, )).fetchall()[0]
-        await message.answer(text=f'<b>Наименование товара:</b> {data[1]}\n'
-                                  f'<b>Цена:</b> {data[2]}\n<b>Описание:</b>\n{data[3]}', reply_markup=keyboard)
 
 
 async def main():
