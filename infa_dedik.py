@@ -463,6 +463,11 @@ class AddBalance(StatesGroup):
 
 class ChoosingGoods(StatesGroup):
     choosing_goods = State()
+    submit_buy = State()
+
+
+class OrderPage(StatesGroup):
+    next_page = State()
 
 
 async def wallet():
@@ -508,6 +513,13 @@ async def main_menu(message):
         input_field_placeholder="Выберите действие"
     )
     await message.answer(f"Привет, {user_full_name}!", reply_markup=keyboard)
+
+
+async def send_order():
+    pass
+
+async def get_order_page(data):
+    pass
 
 
 # получаем баланс пользователя
@@ -604,7 +616,43 @@ async def pay(message: Message, state: FSMContext):
         title = message.text.split(' | ')[0]
         data = cur.execute(f"SELECT * FROM goods WHERE title = ?", (title, )).fetchall()[0]
         await message.answer(text=f'<b>Наименование товара:</b> {data[1]}\n'
-                                  f'<b>Цена:</b> {data[2]}\n<b>Описание:</b>\n{data[3]}', reply_markup=keyboard)
+                                  f'<b>Цена:</b> {data[2]} руб.\n<b>Описание:</b>\n{data[3]}', reply_markup=keyboard)
+
+        await state.update_data(choosing_goods=(data[1], data[2]))
+
+        await state.set_state(ChoosingGoods.submit_buy)
+
+
+@dp.message(ChoosingGoods.submit_buy, Text("Подтвердить покупку"))
+async def submit(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+
+    data = await state.get_data()
+    title = data["choosing_goods"][0]
+    price = data["choosing_goods"][1]
+
+    balance = await get_balance(user_id)
+
+    if price > balance:
+        await message.answer(text=f"У Вас недостаточно средств.\nПополните баланс в профиле.")
+        await main_menu(message)
+
+    else:
+
+        shop_list = cur.execute(f"SELECT shop_list FROM users WHERE user_id = ?", (user_id, )).fetchall()[0][0]
+        shop_list = f'{shop_list}___{title}__{price}__{str(datetime.datetime.now())}'
+
+        command = "UPDATE users SET balance = ?, shop_list = ? WHERE user_id = ?"
+        cur.execute(command, (balance - price, shop_list, user_id, ))
+        db.commit()
+
+        await state.clear()
+
+        await message.answer(text=f"Успешно!")
+
+        await send_order()
+
+        await main_menu(message)
 
 
 @dp.message(AddBalance.choosing_sum)
@@ -704,14 +752,17 @@ async def add_balance(message: Message, state: FSMContext):
         result_list = await yoo_check()
 
         for i in result_list:
+
             amount = float(round(i["amount"], 1))
             label = i["label"]
 
             if float(data[0]) == amount and data[1] == label:
                 await state.clear()
+
                 command = "UPDATE users SET balance = ?, paid_flag = ? WHERE user_id = ?"
                 cur.execute(command, (round(amount + balance, 1), 0, user_id))
                 db.commit()
+
                 await message.answer(text=f"На ваш баланс зачислено {amount} рублей !!1")
                 await main_menu(message)
                 return
@@ -774,13 +825,34 @@ async def profile(message: types.Message):
 
 
 @dp.message(Text("Список покупок"))
-async def goods_list(message: types.Message):
+async def goods_list(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
 
-    data = cur.execute(f"SELECT shop_list FROM users WHERE user_id = ?", (user_id,)).fetchall()[0][0]
+    data = cur.execute(f"SELECT shop_list FROM users WHERE user_id = ?", (user_id, )).fetchall()[0][0]
 
     if data:
-        pass                                                                # ТУТ СПИСОК ПОКУПОК
+        data = data.split('___')[1:]
+        await get_order_page(data)                                                          # ТУТ СПИСОК ПОКУПОК
+        await state.set_state(OrderPage.next_page)
+
+        buttons = [
+            [
+                types.KeyboardButton(text="<---"),
+                types.KeyboardButton(text="--->")
+            ],
+            [
+                types.KeyboardButton(text="Назад"),
+            ],
+        ]
+        keyboard = types.ReplyKeyboardMarkup(
+            keyboard=buttons,
+            resize_keyboard=True,
+        )
+
+        await message.answer(
+            text=f"{data[0]}",
+            reply_markup=keyboard
+        )
     else:
         await message.answer(text=f"У Вас нет покупок...")
 
