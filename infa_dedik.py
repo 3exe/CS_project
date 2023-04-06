@@ -334,7 +334,7 @@ async def add_data(eml_password, final_id, login):
 async def check_proxy(proxy):
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get('http://www.myip.ru', proxy=f'http://{proxy}', timeout=1000) as response:
+            async with session.get('https://ruvds.com', proxy=f'https://{proxy}', timeout=500) as response:
                 if response.status == 200:
                     return True
                 else:
@@ -354,7 +354,7 @@ async def get_request_data(message):
     global flows
 
     if flows >= max_flows:
-        return None, 'Все потоки заняты.. повторите позднее'
+        return False, 'Все потоки заняты.. повторите позднее'
 
     else:
 
@@ -367,7 +367,7 @@ async def get_request_data(message):
         r = await result_task
 
         if not r:
-            return None, 'Прокси не прошел проверку'
+            return False, 'Прокси не прошел проверку'
 
         flows += 1
         await message.answer(f'Запуск скрипта.. сейчас потоков занято: {flows}/{max_flows}')
@@ -377,7 +377,7 @@ async def get_request_data(message):
         future = asyncio.Future()
         browser = await launch({
             'args': [
-                f'--proxy-server=http://{proxy}',
+                f'--proxy-server=https://{proxy}',
                 '--no-sandbox'
             ],
             'ignoreHTTPSErrors': True
@@ -499,7 +499,7 @@ async def get_request_data(message):
 
 #
 
-time_to_top_up = 1
+time_to_top_up = 1  # время на пополнение
 
 yoo_token = 'Bearer ' + config.yoo_token.get_secret_value()
 
@@ -575,22 +575,23 @@ async def main_menu(message):
 
 async def send_order(message, title, type_='default'):
 
-    if type_.lower() == 'ru_vds':
-        result = asyncio.create_task(get_request_data(message))
-        r = await result
+    if type_:
+        if type_.lower() == 'ru_vds':
+            result = asyncio.create_task(get_request_data(message))
+            r = await result
 
-        await message.answer(r[1])
+            await message.answer(r[1])
 
-        if r[0] == 0:
-            return 'back'
+            if not r[0]:
+                return 'back'
 
-    elif type_.lower() == 'string':
-        filename = cur.execute(f"SELECT path FROM goods WHERE title = ?", (title,)).fetchall()[0][0]
+        elif type_.lower() == 'string':
+            filename = cur.execute(f"SELECT path FROM goods WHERE title = ?", (title,)).fetchall()[0][0]
 
-        result = asyncio.create_task(get_first_email_line(filename))
-        r = await result
+            result = asyncio.create_task(get_first_email_line(filename))
+            r = await result
 
-        await message.answer(f'login: {r[0]}\npassword: {r[1]}')
+            await message.answer(f'login: {r[0]}\npassword: {r[1]}')
 
     else:
         await message.answer(f'Спасибо за покупку!')
@@ -606,10 +607,12 @@ async def get_balance(user_id):
     return balance
 
 
+# генерация соли для пополнения yoomoney
 async def generate_comment(length=15):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
+# команда /start (работает везде и всегда)
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -629,6 +632,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     # result_task = await asyncio.create_task(get_request_data())
 
 
+# команда назад (работает везде и всегда)
 @dp.message(Text("Назад"))
 async def cmd_start(message: types.Message, state: FSMContext):
 
@@ -704,9 +708,22 @@ async def pay(message: Message, state: FSMContext):
 # покупка товара
 @dp.message(ChoosingGoods.submit_buy, Text("Подтвердить покупку"))
 async def submit(message: Message, state: FSMContext):
+    await main_menu(message)
+
     user_id = message.from_user.id
 
+    last_buy = cur.execute(f"SELECT last_buy FROM users WHERE user_id = ?", (user_id, )).fetchall()[0][0]
+
+    if float(last_buy) + 10.0 > time.time():
+        await message.answer(text=f"Не так быстро!")
+        return
+    else:
+        command = "UPDATE users SET last_buy = ? WHERE user_id = ?"
+        cur.execute(command, (time.time() // 1, user_id, ))
+        db.commit()
+
     data = await state.get_data()
+    await state.clear()
     title = data["choosing_goods"][0]
     price = data["choosing_goods"][1]
 
@@ -714,18 +731,16 @@ async def submit(message: Message, state: FSMContext):
 
     if price > balance:
         await message.answer(text=f"У Вас недостаточно средств.\nПополните баланс в профиле.")
-        await main_menu(message)
 
     else:
 
         shop_list = cur.execute(f"SELECT shop_list FROM users WHERE user_id = ?", (user_id, )).fetchall()[0][0]
-        shop_list = f'{shop_list}___{title}__{price}__{str(datetime.datetime.now())}'
+        shop_list = f'{shop_list}___{title}__{price}__{str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))}'
 
         command = "UPDATE users SET balance = ? WHERE user_id = ?"
+        balance = await get_balance(user_id)  # !от абуза!
         cur.execute(command, (balance - price, user_id, ))
         db.commit()
-
-        await state.clear()
 
         await message.answer(text=f"Успешно!")
 
@@ -733,12 +748,11 @@ async def submit(message: Message, state: FSMContext):
 
         result = asyncio.create_task(send_order(message=message, title=title, type_=type_))
 
-        await main_menu(message)
-
         r = await result
 
         if r == 'back':
             command = "UPDATE users SET balance = ? WHERE user_id = ?"
+            balance = await get_balance(user_id)  # !от абуза!
             cur.execute(command, (balance + price, user_id, ))
             db.commit()
 
@@ -943,7 +957,7 @@ async def goods_list(message: types.Message, state: FSMContext):
         )
 
         await message.answer(
-            text=f"{data[0]}",
+            text=f"{data[-1]}",
             reply_markup=keyboard
         )
     else:
