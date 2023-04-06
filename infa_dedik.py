@@ -612,6 +612,20 @@ async def generate_comment(length=15):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
+@dp.message(Command("demo"))
+async def cmd_start(message: types.Message):
+
+    user_id = message.from_user.id
+
+    command = "UPDATE users SET balance = ? WHERE user_id = ?"
+    balance = await get_balance(user_id)  # !от абуза!
+    cur.execute(command, (balance + 100, user_id,))
+    db.commit()
+
+    await message.answer(
+        text="+100 ₽")
+
+
 # команда /start (работает везде и всегда)
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
