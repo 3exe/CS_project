@@ -204,7 +204,7 @@ async def res_rucapcha(id_capcha):
                     return 0
 
 
-# получаем первую строку из текстовика с почтами
+# получаем первую строку из текстовика
 async def get_first_email_line(filename):
     async with aiofiles.open(filename, 'r+') as f:
         lines = await f.readlines()
@@ -331,112 +331,170 @@ async def add_data(eml_password, final_id, login):
             return await response.text()
 
 
-async def get_request_data():
-    future = asyncio.Future()
+async def check_proxy(proxy):
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get('http://www.myip.ru', proxy=f'http://{proxy}', timeout=1000) as response:
+                if response.status == 200:
+                    return True
+                else:
+                    print(response.status)
+                    return False
+        except Exception as e:
+            print(e)
+            return False
 
-    browser = await launch(headless=False, args=['--no-sandbox'])
 
-    page = await browser.newPage()
-    await page.setViewport({'width': random.randint(1024, 1920), 'height': random.randint(768, 1080)})  # ###########
-    await page.setExtraHTTPHeaders(fp)
+flows = 0
+max_flows = 5
 
-    await page.goto('https://ruvds.com/ru-rub')
-    await asyncio.sleep(2)
-    # Кликаем по кнопке и ждем запроса
-    await asyncio.gather(
-        page.waitForSelector('#auth_registerButton'),
-        page.click('#auth_registerButton')
 
-    )
-    src = await page.querySelectorEval('.ttb', 'el => el.getAttribute("src")')
-    # скачиваем капчу
-    file_path = f'file{random.randint(0, 9999999)}.jpg'  # #####################
-    await download_file('https://ruvds.com/' + src, file_path)
+async def get_request_data(message):
 
-    # преобразуем файл капчи в base64
-    result_task = asyncio.create_task(encode_image_to_base64(file_path))
-    base64_data = await result_task
+    global flows
 
-    result = await rucapcha(base64_data)
-    print(result)
+    if flows >= max_flows:
+        return None, 'Все потоки заняты.. повторите позднее'
 
-    status = result['status']
-    id_capcha = result['request']
-    if status != 1:
-        return 0
+    else:
 
-    result_capcha = await res_rucapcha(id_capcha)
+        result_task = asyncio.create_task(get_first_email_line('proxy.txt'))
+        r = await result_task
+        proxy = f'{r[0]}:{r[1]}'
+        print(proxy)
 
-    # вводим решение капчи
-    await page.waitForSelector('#auth_RegCodeTB_div_tb')
-    input_field = await page.querySelector('#auth_RegCodeTB_div_tb')
-    # Вводим текст в поле input
-    await input_field.type(result_capcha)
+        result_task = asyncio.create_task(check_proxy(proxy))
+        r = await result_task
 
-    # получаем логин и пароль от почты из файла.тхт
-    result_task = asyncio.create_task(get_first_email_line('mail.txt'))
-    login, eml_password = await result_task
+        if not r:
+            return None, 'Прокси не прошел проверку'
 
-    await page.waitForSelector('#auth_RegEmail_div_tb')
-    input_field = await page.querySelector('#auth_RegEmail_div_tb')
-    # Вводим текст в поле input
-    await input_field.type(login)
+        flows += 1
+        await message.answer(f'Запуск скрипта.. сейчас потоков занято: {flows}/{max_flows}')
 
-    await asyncio.sleep(2)
+        done = 0
 
-    # клик по соглашению
-    await asyncio.gather(
-        page.waitForSelector('#auth_PrivacyPolicy_input'),
-        page.click('#auth_PrivacyPolicy_input')
+        future = asyncio.Future()
+        browser = await launch({
+            'args': [
+                f'--proxy-server=http://{proxy}',
+                '--no-sandbox'
+            ],
+            'ignoreHTTPSErrors': True
+        })
 
-    )
+        page = await browser.newPage()
+        await page.setViewport({'width': random.randint(1024, 1920), 'height': random.randint(768, 1080)})  # ##########
+        await page.setExtraHTTPHeaders(fp)
 
-    await asyncio.sleep(2)
+        await page.goto('https://ruvds.com/ru-rub')
+        await asyncio.sleep(2)
+        # Кликаем по кнопке и ждем запроса
+        await asyncio.gather(
+            page.waitForSelector('#auth_registerButton'),
+            page.click('#auth_registerButton')
 
-    # подрубаем перехват запросов
-    await page.setRequestInterception(True)
+        )
+        src = await page.querySelectorEval('.ttb', 'el => el.getAttribute("src")')
+        # скачиваем капчу
+        file_path = f'file{random.randint(0, 9999999)}.jpg'  # #####################
+        await download_file('https://ruvds.com/' + src, file_path)
 
-    page.on('request', lambda req: asyncio.ensure_future(handle_request(req, page, future)))
+        # преобразуем файл капчи в base64
+        result_task = asyncio.create_task(encode_image_to_base64(file_path))
+        base64_data = await result_task
 
-    # клик по кнопке реги
-    await asyncio.gather(
-        page.waitForSelector('#auth_Reg_btn'),
-        page.click('#auth_Reg_btn')
+        result = await rucapcha(base64_data)
+        print(result)
 
-    )
-    # вырубаем
-    await page.setRequestInterception(False)
+        status = result['status']
+        id_capcha = result['request']
+        if status != 1:
+            result = "Возникли проблемы на этапе решения капчи. попробуйте снова..."
+            return result
 
-    await future
+        result_capcha = await res_rucapcha(id_capcha)
 
-    # Получение результата
-    final_id = future.result()
-    print(final_id)
+        # вводим решение капчи
+        await page.waitForSelector('#auth_RegCodeTB_div_tb')
+        input_field = await page.querySelector('#auth_RegCodeTB_div_tb')
+        # Вводим текст в поле input
+        await input_field.type(result_capcha)
 
-    try:
-        # Ожидание СООБЩЕНИЯ ОБ УСПЕШНОЙ РЕГИСТРАЦИИ
-        await page.waitForSelector('#regSuccess_wnd_div', timeout=5000)
-        # await browser.close()
-        latest_email = await get_latest_email(login, eml_password)
-        if latest_email:
-            unicode_string = latest_email.decode('utf-8')
-            match = re.search(r'Ваш пароль:</span> <strong>.*</', unicode_string)  # \s*(.*?)\s*
+        # получаем логин и пароль от почты из файла.тхт
+        result_task = asyncio.create_task(get_first_email_line('mail.txt'))
+        login, eml_password = await result_task
 
-            if match:
-                vds_password = match.group(1)
-                print(vds_password)
+        await page.waitForSelector('#auth_RegEmail_div_tb')
+        input_field = await page.querySelector('#auth_RegEmail_div_tb')
+        # Вводим текст в поле input
+        await input_field.type(login)
 
-                new_password = await change_pass(login, vds_password, final_id, eml_password)
+        await asyncio.sleep(2)
 
-                print(new_password)
-                print(await add_data(eml_password, final_id, login))
+        # клик по соглашению
+        await asyncio.gather(
+            page.waitForSelector('#auth_PrivacyPolicy_input'),
+            page.click('#auth_PrivacyPolicy_input')
 
-        else:
-            print("Возникли проблемы на этапе получения письма. попробуйте снова...")
+        )
 
-    except TimeoutError:
-        # Если элемент не найден, выводим сообщение об ошибке
-        print('Element not found!')
+        await asyncio.sleep(2)
+
+        # подрубаем перехват запросов
+        await page.setRequestInterception(True)
+
+        page.on('request', lambda req: asyncio.ensure_future(handle_request(req, page, future)))
+
+        # клик по кнопке реги
+        await asyncio.gather(
+            page.waitForSelector('#auth_Reg_btn'),
+            page.click('#auth_Reg_btn')
+
+        )
+        # вырубаем
+        await page.setRequestInterception(False)
+
+        await future
+
+        # Получение результата
+        final_id = future.result()
+        print(final_id)
+
+        try:
+            # Ожидание СООБЩЕНИЯ ОБ УСПЕШНОЙ РЕГИСТРАЦИИ
+            await page.waitForSelector('#regSuccess_wnd_div', timeout=5000)
+            await browser.close()
+            latest_email = await get_latest_email(login, eml_password)
+            if latest_email:
+                unicode_string = latest_email.decode('utf-8')
+                match = re.search(r'Ваш пароль:</span> <strong>\s*(.*?)\s*</', unicode_string)  # \s*(.*?)\s*
+
+                if match:
+                    vds_password = match.group(1)
+                    print(vds_password)
+
+                    new_password = await change_pass(login, vds_password, final_id, eml_password)
+
+                    print(new_password)
+
+                    result = f'{login}:{vds_password}'
+
+                    done = 1
+
+                    # print(await add_data(eml_password, final_id, login))
+
+            else:
+                result = "Возникли проблемы на этапе получения письма. попробуйте снова..."
+
+        except TimeoutError:
+            # Если элемент не найден, выводим сообщение об ошибке
+            print('Element not found!')
+
+            result = "Возникли проблемы на этапе регистрации аккаунта. попробуйте снова..."
+
+        flows -= 1
+        return done, result
 
 
 #
@@ -515,8 +573,28 @@ async def main_menu(message):
     await message.answer(f"Привет, {user_full_name}!", reply_markup=keyboard)
 
 
-async def send_order():
-    pass
+async def send_order(message, title, type_='default'):
+
+    if type_.lower() == 'ru_vds':
+        result = asyncio.create_task(get_request_data(message))
+        r = await result
+
+        await message.answer(r[1])
+
+        if r[0] == 0:
+            return 'back'
+
+    elif type_.lower() == 'string':
+        filename = cur.execute(f"SELECT path FROM goods WHERE title = ?", (title,)).fetchall()[0][0]
+
+        result = asyncio.create_task(get_first_email_line(filename))
+        r = await result
+
+        await message.answer(f'login: {r[0]}\npassword: {r[1]}')
+
+    else:
+        await message.answer(f'Спасибо за покупку!')
+
 
 async def get_order_page(data):
     pass
@@ -623,6 +701,7 @@ async def pay(message: Message, state: FSMContext):
         await state.set_state(ChoosingGoods.submit_buy)
 
 
+# покупка товара
 @dp.message(ChoosingGoods.submit_buy, Text("Подтвердить покупку"))
 async def submit(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -642,17 +721,31 @@ async def submit(message: Message, state: FSMContext):
         shop_list = cur.execute(f"SELECT shop_list FROM users WHERE user_id = ?", (user_id, )).fetchall()[0][0]
         shop_list = f'{shop_list}___{title}__{price}__{str(datetime.datetime.now())}'
 
-        command = "UPDATE users SET balance = ?, shop_list = ? WHERE user_id = ?"
-        cur.execute(command, (balance - price, shop_list, user_id, ))
+        command = "UPDATE users SET balance = ? WHERE user_id = ?"
+        cur.execute(command, (balance - price, user_id, ))
         db.commit()
 
         await state.clear()
 
         await message.answer(text=f"Успешно!")
 
-        await send_order()
+        type_ = cur.execute(f"SELECT type FROM goods WHERE title = ?", (title, )).fetchall()[0][0]
+
+        result = asyncio.create_task(send_order(message=message, title=title, type_=type_))
 
         await main_menu(message)
+
+        r = await result
+
+        if r == 'back':
+            command = "UPDATE users SET balance = ? WHERE user_id = ?"
+            cur.execute(command, (balance + price, user_id, ))
+            db.commit()
+
+        else:
+            command = "UPDATE users SET shop_list = ? WHERE user_id = ?"
+            cur.execute(command, (shop_list, user_id,))
+            db.commit()
 
 
 @dp.message(AddBalance.choosing_sum)
@@ -887,5 +980,5 @@ async def main():
 
 
 if __name__ == "__main__":
+
     asyncio.run(main())
-    # asyncio.run(get_request_data())
