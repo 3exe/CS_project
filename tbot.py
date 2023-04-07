@@ -371,7 +371,7 @@ async def pay(message: Message, state: FSMContext):
         goods.append(text)
 
     if message.text in goods:
-        buttons = [[types.KeyboardButton(text="🔓 Подтвердить покупку"), ],
+        buttons = [[types.KeyboardButton(text="✔ Подтвердить покупку"), ],
                    [types.KeyboardButton(text="✖ Назад")], ]
 
         keyboard = types.ReplyKeyboardMarkup(
@@ -403,7 +403,7 @@ async def next_page(message: types.Message, state: FSMContext):
 
 
 # подтверждение покупки товара
-@dp.message(ChoosingGoods.submit_buy, Text("🔓 Подтвердить покупку"))
+@dp.message(ChoosingGoods.submit_buy, Text("✔ Подтвердить покупку"))
 async def submit(message: Message, state: FSMContext):
     await main_menu(message)
 
