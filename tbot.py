@@ -31,8 +31,8 @@ wallet = config.wallet
 bot = Bot(token=config.bot_token.get_secret_value(), parse_mode='HTML')
 dp = Dispatcher()
 
-available_payment_type = ["Из кошелька ЮMoney", "С банковской карты"]
-check_transaction_buttons = ["Я оплатил/а", "Отмена оплаты"]
+available_payment_type = ["🏳️‍🌈 Из кошелька ЮMoney", "💳 С банковской карты"]
+check_transaction_buttons = ["☑ Я оплатил/а", "💱 Отмена оплаты"]
 
 #
 
@@ -64,11 +64,11 @@ class OrderPage(StatesGroup):
 async def user_profile(message):
     buttons = [
         [
-            types.KeyboardButton(text="Пополнить баланс")
+            types.KeyboardButton(text="💳 Пополнить баланс")
         ],
         [
-            types.KeyboardButton(text="Назад"),
-            types.KeyboardButton(text="Список покупок")
+            types.KeyboardButton(text="✖ Назад"),
+            types.KeyboardButton(text="📝 Список покупок")
         ],
     ]
     keyboard = types.ReplyKeyboardMarkup(
@@ -79,7 +79,7 @@ async def user_profile(message):
 
     balance = await asyncio.create_task(get_balance(user_id))
 
-    profile_message = f'Вы перешли в профиль.\nВаш id: {user_id}\nВаш баланс: {balance} руб.'
+    profile_message = f'💼 Вы перешли в профиль.\n🆔 Ваш id: {user_id}\n💸 Ваш баланс: {balance} руб.'
     await message.answer(profile_message, reply_markup=keyboard)
 
 
@@ -88,11 +88,11 @@ async def main_menu(message):
     user_full_name = message.from_user.full_name
     buttons = [
         [
-            types.KeyboardButton(text="Купить")
+            types.KeyboardButton(text="💵  Купить")
         ],
         [
-            types.KeyboardButton(text="Профиль"),
-            types.KeyboardButton(text="Поддержка")
+            types.KeyboardButton(text="ℹ Профиль"),
+            types.KeyboardButton(text="❓ Поддержка")
         ],
     ]
     keyboard = types.ReplyKeyboardMarkup(
@@ -100,7 +100,7 @@ async def main_menu(message):
         resize_keyboard=True,
         input_field_placeholder="Выберите действие"
     )
-    await message.answer(f"Привет, {user_full_name}!", reply_markup=keyboard)
+    await message.answer(f"Привет, {user_full_name} ! ❤", reply_markup=keyboard)
 
 
 # выбор поведения после успешной покупки товара пользователем в зависимости от типа товара
@@ -128,8 +128,7 @@ async def send_order(message, title, type_='default'):
 
             await message.answer(data)
 
-    else:
-        await message.answer(f'Спасибо за покупку!')
+    await message.answer(f'🫂 Спасибо за покупку!')
 
     return data
 
@@ -137,8 +136,8 @@ async def send_order(message, title, type_='default'):
 async def parse_page(page_data):
     data = page_data.split('__')
 
-    msg = f'<b>Наименование:</b> {data[0]}\n<b>Стоимость покупки:</b> {data[1]} руб.\n' \
-          f'<b>Дата и время:</b> {data[2]}\n<b>Данные:</b> {data[3]}'
+    msg = f'<b>📋 Наименование:</b> {data[0]}\n<b>💰 Стоимость покупки:</b> {data[1]} руб.\n' \
+          f'<b>⏳ Дата и время:</b> {data[2]}\n<b>🔎 Данные:</b> {data[3]}'
 
     return msg
 
@@ -155,16 +154,16 @@ async def page_manager(action, message, state):
     now_page = st["now_page"]
     len_page = st["next_page"]
 
-    back = [types.KeyboardButton(text="Назад"), ]
+    back = [types.KeyboardButton(text="✖ Назад"), ]
 
     buttons_full = [
-        types.KeyboardButton(text="<---"),
-        types.KeyboardButton(text="--->"),
+        types.KeyboardButton(text="⬅⬅"),
+        types.KeyboardButton(text="➡➡"),
     ]
 
-    buttons_next = [types.KeyboardButton(text="--->"), ]
+    buttons_next = [types.KeyboardButton(text="➡➡"), ]
 
-    buttons_back = [types.KeyboardButton(text="<---"), ]
+    buttons_back = [types.KeyboardButton(text="⬅⬅"), ]
 
     buttons_middle = [buttons_full, back, ]
     buttons_first = [buttons_next, back, ]
@@ -317,8 +316,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
     # result_task = await asyncio.create_task(get_request_data())
 
 
-# команда назад (работает везде и всегда)
-@dp.message(Text("Назад"))
+# команда ✖ Назад (работает везде и всегда)
+@dp.message(Text("✖ Назад"))
 async def cmd_start(message: types.Message, state: FSMContext):
 
     await state.clear()
@@ -330,7 +329,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def payment_type_chosen(message: Message, state: FSMContext):
     await state.update_data(chosen_type=message.text.lower())
     await message.answer(
-        text="Введите сумму пополнения:",
+        text="📚 Введите сумму пополнения:",
         reply_markup=types.ReplyKeyboardRemove()
     )
     await state.set_state(AddBalance.choosing_sum)
@@ -340,8 +339,8 @@ async def payment_type_chosen(message: Message, state: FSMContext):
 @dp.message(AddBalance.choosing_payment_type)
 async def payment_type_chosen_incorrectly(message: Message):
     await message.answer(
-        text="Я не знаю такого способа оплаты.\n"
-             "Пожалуйста, выберите из списка ниже:"
+        text="🧐 Я не знаю такого способа оплаты.\n"
+             "Пожалуйста, выбери из списка ниже:"
     )
 
 
@@ -360,7 +359,7 @@ async def wait_add_balance(message):
         await message.answer(text="Время на оплату вышло!")
 
 
-# состояние выбора товара после нажатия кнопки "Купить"
+# состояние выбора товара после нажатия кнопки "💵  Купить"
 @dp.message(ChoosingGoods.choosing_goods)
 async def pay(message: Message, state: FSMContext):
     cur.execute("SELECT title, price FROM goods")
@@ -372,8 +371,8 @@ async def pay(message: Message, state: FSMContext):
         goods.append(text)
 
     if message.text in goods:
-        buttons = [[types.KeyboardButton(text="Подтвердить покупку"), ],
-                   [types.KeyboardButton(text="Назад")], ]
+        buttons = [[types.KeyboardButton(text="🔓 Подтвердить покупку"), ],
+                   [types.KeyboardButton(text="✖ Назад")], ]
 
         keyboard = types.ReplyKeyboardMarkup(
             keyboard=buttons,
@@ -382,8 +381,9 @@ async def pay(message: Message, state: FSMContext):
 
         title = message.text.split(' | ')[0]
         data = cur.execute(f"SELECT * FROM goods WHERE title = ?", (title, )).fetchall()[0]
-        await message.answer(text=f'<b>Наименование товара:</b> {data[1]}\n'
-                                  f'<b>Цена:</b> {data[2]} руб.\n<b>Описание:</b>\n{data[3]}', reply_markup=keyboard)
+        await message.answer(text=f'<b>✏ Наименование товара:</b> {data[1]}\n'
+                                  f'<b>💵 Цена:</b> {data[2]} руб.\n<b>📎 Описание:</b>\n{data[3]}',
+                             reply_markup=keyboard)
 
         await state.update_data(choosing_goods=(data[1], data[2]))
 
@@ -391,19 +391,19 @@ async def pay(message: Message, state: FSMContext):
 
 
 # кнопка для просмотра следующей записи в истории покупок
-@dp.message(OrderPage.next_page, Text('--->'))
+@dp.message(OrderPage.next_page, Text('➡➡'))
 async def next_page(message: types.Message, state: FSMContext):
     await page_manager(action=0, message=message, state=state)
 
 
 # кнопка для просмотра предыдущей записи в истории покупок
-@dp.message(OrderPage.next_page, Text('<---'))
+@dp.message(OrderPage.next_page, Text('⬅⬅'))
 async def next_page(message: types.Message, state: FSMContext):
     await page_manager(action=1, message=message, state=state)
 
 
 # подтверждение покупки товара
-@dp.message(ChoosingGoods.submit_buy, Text("Подтвердить покупку"))
+@dp.message(ChoosingGoods.submit_buy, Text("🔓 Подтвердить покупку"))
 async def submit(message: Message, state: FSMContext):
     await main_menu(message)
 
@@ -438,7 +438,7 @@ async def submit(message: Message, state: FSMContext):
         cur.execute(command, (balance - price, user_id, ))
         db.commit()
 
-        await message.answer(text=f"Успешно!")
+        await message.answer(text=f"🤝 Успешно!")
 
         type_ = cur.execute(f"SELECT type FROM goods WHERE title = ?", (title, )).fetchall()[0][0]
 
@@ -470,13 +470,13 @@ async def add_balance(message: Message, state: FSMContext):
         add_sum = abs(round(add_sum, 1))
 
         if add_sum < 10.0 or add_sum > 5000.0:
-            await message.answer(text=f"Сумма должна быть больше 10 и меньше 5000 !!1")
+            await message.answer(text=f"❌ Сумма должна быть больше 10 и меньше 5000 !!1")
             return
 
         buttons = [
             [
-                types.KeyboardButton(text="Я оплатил/а"),
-                types.KeyboardButton(text="Отмена оплаты")
+                types.KeyboardButton(text="☑ Я оплатил/а"),
+                types.KeyboardButton(text="💱 Отмена оплаты")
             ],
         ]
         keyboard = types.ReplyKeyboardMarkup(
@@ -486,7 +486,7 @@ async def add_balance(message: Message, state: FSMContext):
 
         comment = await generate_comment()
 
-        payment_type = 'PC' if user_data['chosen_type'] == "из кошелька юmoney" else 'AC'
+        payment_type = 'PC' if user_data['chosen_type'] == "🏳️‍🌈 Из кошелька ЮMoney" else 'AC'
 
         kom = 0.03
         if payment_type == 'PC':
@@ -518,7 +518,7 @@ async def add_balance(message: Message, state: FSMContext):
 
     except ValueError:
         await message.answer(
-            text=f"попробуй еще раз"
+            text=f"❓ Попробуй еще раз"
         )
 
 
@@ -578,14 +578,14 @@ async def add_balance(message: Message, state: FSMContext):
                     await writer.writerow([user_id, round(amount, 1), t])
                     file.close()
 
-                await message.answer(text=f"На ваш баланс зачислено {amount} рублей !!1")
+                await message.answer(text=f"📈 На ваш баланс зачислено {amount} рублей !!1")
                 await main_menu(message)
                 return
         else:
-            await message.answer(text=f"Пополнение не найдено")
+            await message.answer(text=f"🔎❌ Пополнение не найдено")
 
     else:
-        await message.answer(text=f"Время на оплату вышло!!1")
+        await message.answer(text=f"⏰ Время на оплату вышло!!1")
         await state.clear()
         await main_menu(message)
 
@@ -604,19 +604,19 @@ async def add_balance(message: Message, state: FSMContext):
 # реакция на некорректное сообщение пользователя в состоянии ожидания оплаты
 @dp.message(AddBalance.check_transaction)
 async def add_balance(message: Message):
-    await message.answer(text=f"ватафак")
+    await message.answer(text=f"🤯 ватафак")
 
 
-# обработка нажатия кнопки "Пополнить баланс", состояние выбора способа оплаты
-@dp.message(Text("Пополнить баланс"))
+# обработка нажатия кнопки "💳 Пополнить баланс", состояние выбора способа оплаты
+@dp.message(Text("💳 Пополнить баланс"))
 async def add_balance(message: Message, state: FSMContext):
     buttons = [
         [
-            types.KeyboardButton(text="Из кошелька ЮMoney"),
-            types.KeyboardButton(text="С банковской карты")
+            types.KeyboardButton(text="🏳️‍🌈 Из кошелька ЮMoney"),
+            types.KeyboardButton(text="💳 С банковской карты")
         ],
         [
-            types.KeyboardButton(text="Назад"),
+            types.KeyboardButton(text="✖ Назад"),
         ],
     ]
     keyboard = types.ReplyKeyboardMarkup(
@@ -633,19 +633,19 @@ async def add_balance(message: Message, state: FSMContext):
 
 
 # вывод ссылки на тех. поддержку
-@dp.message(Text("Поддержка"))
+@dp.message(Text("❓ Поддержка"))
 async def helping(message: types.Message):
-    await message.answer(f"По всем вопросам @{support}")
+    await message.answer(f"📩 По всем вопросам: @{support}")
 
 
 # профиль пользователя с содержанием основной информации о пользователе
-@dp.message(Text("Профиль"))
+@dp.message(Text("ℹ Профиль"))
 async def profile(message: types.Message):
     await user_profile(message)
 
 
 # проверка наличия покупок у пользователя и попытка их получения, состояние просмотра покупок
-@dp.message(Text("Список покупок"))
+@dp.message(Text("📝 Список покупок"))
 async def goods_list(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
 
@@ -656,9 +656,9 @@ async def goods_list(message: types.Message, state: FSMContext):
         len_data = len(data)
         await state.set_state(OrderPage.next_page)
 
-        back = [types.KeyboardButton(text="Назад"), ]
+        back = [types.KeyboardButton(text="✖ Назад"), ]
 
-        buttons_next = [types.KeyboardButton(text="--->"), ]
+        buttons_next = [types.KeyboardButton(text="➡➡"), ]
         buttons_first = [buttons_next, back, ]
 
         keyboard = types.ReplyKeyboardMarkup(
@@ -690,7 +690,7 @@ async def goods_list(message: types.Message, state: FSMContext):
 
 
 # вывод списка доступных для покупки товаров в виде кнопок с содержанием информации о наименовании товара и его цене
-@dp.message(Text("Купить"))
+@dp.message(Text("💵  Купить"))
 async def buy(message: types.Message, state: FSMContext):
     cur.execute("SELECT title, price FROM goods")
     rows = cur.fetchall()
@@ -702,7 +702,7 @@ async def buy(message: types.Message, state: FSMContext):
             types.KeyboardButton(text=text),
         ]
         buttons.append(product)
-    buttons.append([types.KeyboardButton(text=f"Назад"), ])
+    buttons.append([types.KeyboardButton(text=f"✖ Назад"), ])
     keyboard = types.ReplyKeyboardMarkup(
         keyboard=buttons,
         resize_keyboard=True,

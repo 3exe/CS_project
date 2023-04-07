@@ -14,4 +14,6 @@ pip install pyppeteer
 
 pip install pydantic
 
+pip install pydantic[dotenv]
+
 cmd
