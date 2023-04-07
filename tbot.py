@@ -5,6 +5,8 @@ import string
 import time
 import datetime
 import sqlite3
+import aiofiles
+import csv
 
 import aiohttp
 from aiogram import Bot, Dispatcher, types
@@ -21,6 +23,7 @@ from config_reader import config
 from ruvds import *
 
 time_to_top_up = config.time_to_top_up  # время на пополнение в минутах
+support = config.support
 
 yoo_token = 'Bearer ' + config.yoo_token.get_secret_value()
 wallet = config.wallet
@@ -38,22 +41,26 @@ cur = db.cursor()
 router = Router()
 
 
+# состояние поплнения
 class AddBalance(StatesGroup):
     choosing_payment_type = State()
     choosing_sum = State()
     check_transaction = State()
 
 
+# состояние выбора и покупки товара
 class ChoosingGoods(StatesGroup):
     choosing_goods = State()
     submit_buy = State()
 
 
+# состояние просмотра списка покупок
 class OrderPage(StatesGroup):
     next_page = State()  # длина списка покупок (я перепутал и мне лень переназывать)
     now_page = State()
 
 
+# профиль пользователя
 async def user_profile(message):
     buttons = [
         [
@@ -76,6 +83,7 @@ async def user_profile(message):
     await message.answer(profile_message, reply_markup=keyboard)
 
 
+# главное меню
 async def main_menu(message):
     user_full_name = message.from_user.full_name
     buttons = [
@@ -95,6 +103,7 @@ async def main_menu(message):
     await message.answer(f"Привет, {user_full_name}!", reply_markup=keyboard)
 
 
+# выбор поведения после успешной покупки товара пользователем в зависимости от типа товара
 async def send_order(message, title, type_='default'):
 
     data = 'Отсутствуют'
@@ -134,6 +143,7 @@ async def parse_page(page_data):
     return msg
 
 
+# переключение товаров из списка покупок и вывод актуальных кнопок
 async def page_manager(action, message, state):
 
     user_id = message.from_user.id
@@ -253,7 +263,7 @@ async def page_manager(action, message, state):
             return
 
     await message.answer(
-        text=f"{now_page}, {len_page}",
+        text=f"Страница {abs(now_page)}/{len_page}",
     )
 
 
@@ -268,8 +278,9 @@ async def generate_comment(length=15):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
+# баланс для теста
 @dp.message(Command("demo"))
-async def cmd_start(message: types.Message):
+async def cmd_demo(message: types.Message):
 
     user_id = message.from_user.id
 
@@ -314,6 +325,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await main_menu(message)
 
 
+# состояние ввода суммы пополнения пользователем
 @dp.message(AddBalance.choosing_payment_type, F.text.in_(available_payment_type))
 async def payment_type_chosen(message: Message, state: FSMContext):
     await state.update_data(chosen_type=message.text.lower())
@@ -324,6 +336,7 @@ async def payment_type_chosen(message: Message, state: FSMContext):
     await state.set_state(AddBalance.choosing_sum)
 
 
+# реакция на неверный способ оплаты
 @dp.message(AddBalance.choosing_payment_type)
 async def payment_type_chosen_incorrectly(message: Message):
     await message.answer(
@@ -332,6 +345,7 @@ async def payment_type_chosen_incorrectly(message: Message):
     )
 
 
+# таймер времени на пополнение
 async def wait_add_balance(message):
     await asyncio.sleep(time_to_top_up * 60)
 
@@ -346,6 +360,7 @@ async def wait_add_balance(message):
         await message.answer(text="Время на оплату вышло!")
 
 
+# состояние выбора товара после нажатия кнопки "Купить"
 @dp.message(ChoosingGoods.choosing_goods)
 async def pay(message: Message, state: FSMContext):
     cur.execute("SELECT title, price FROM goods")
@@ -375,17 +390,19 @@ async def pay(message: Message, state: FSMContext):
         await state.set_state(ChoosingGoods.submit_buy)
 
 
+# кнопка для просмотра следующей записи в истории покупок
 @dp.message(OrderPage.next_page, Text('--->'))
 async def next_page(message: types.Message, state: FSMContext):
     await page_manager(action=0, message=message, state=state)
 
 
+# кнопка для просмотра предыдущей записи в истории покупок
 @dp.message(OrderPage.next_page, Text('<---'))
 async def next_page(message: types.Message, state: FSMContext):
     await page_manager(action=1, message=message, state=state)
 
 
-# покупка товара
+# подтверждение покупки товара
 @dp.message(ChoosingGoods.submit_buy, Text("Подтвердить покупку"))
 async def submit(message: Message, state: FSMContext):
     await main_menu(message)
@@ -444,6 +461,7 @@ async def submit(message: Message, state: FSMContext):
             db.commit()
 
 
+# проверка введенной пользователем суммы пополнение, фильтрация и состояние ожидание пополнения
 @dp.message(AddBalance.choosing_sum)
 async def add_balance(message: Message, state: FSMContext):
     user_data = await state.get_data()
@@ -504,6 +522,7 @@ async def add_balance(message: Message, state: FSMContext):
         )
 
 
+# запрос истории пополнений юмани за нужный период
 async def yoo_check():
     headers = {
         "Authorization": yoo_token,
@@ -528,6 +547,7 @@ async def yoo_check():
             return response_text["operations"]
 
 
+# проверка истинности заявления об оплате счета на поплнение баланса и его актуальности
 @dp.message(AddBalance.check_transaction, Text(check_transaction_buttons[0]))
 async def add_balance(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -552,6 +572,12 @@ async def add_balance(message: Message, state: FSMContext):
                 cur.execute(command, (round(amount + balance, 1), 0, user_id))
                 db.commit()
 
+                async with aiofiles.open('topup.csv', mode='a', encoding='utf-8') as file:
+                    writer = csv.writer(file)
+                    t = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                    await writer.writerow([user_id, round(amount, 1), t])
+                    file.close()
+
                 await message.answer(text=f"На ваш баланс зачислено {amount} рублей !!1")
                 await main_menu(message)
                 return
@@ -564,6 +590,7 @@ async def add_balance(message: Message, state: FSMContext):
         await main_menu(message)
 
 
+# отмена заявки на оплаты по желанию пользователя
 @dp.message(AddBalance.check_transaction, Text(check_transaction_buttons[1]))
 async def add_balance(message: Message, state: FSMContext):
     command = "UPDATE users SET payment_info = ?, paid_flag = ? WHERE user_id = ?"
@@ -574,11 +601,13 @@ async def add_balance(message: Message, state: FSMContext):
     await main_menu(message)
 
 
+# реакция на некорректное сообщение пользователя в состоянии ожидания оплаты
 @dp.message(AddBalance.check_transaction)
 async def add_balance(message: Message):
     await message.answer(text=f"ватафак")
 
 
+# обработка нажатия кнопки "Пополнить баланс", состояние выбора способа оплаты
 @dp.message(Text("Пополнить баланс"))
 async def add_balance(message: Message, state: FSMContext):
     buttons = [
@@ -603,16 +632,19 @@ async def add_balance(message: Message, state: FSMContext):
     await state.set_state(AddBalance.choosing_payment_type)
 
 
+# вывод ссылки на тех. поддержку
 @dp.message(Text("Поддержка"))
 async def helping(message: types.Message):
-    await message.answer("По всем вопросам @root112")
+    await message.answer(f"По всем вопросам @{support}")
 
 
+# профиль пользователя с содержанием основной информации о пользователе
 @dp.message(Text("Профиль"))
 async def profile(message: types.Message):
     await user_profile(message)
 
 
+# проверка наличия покупок у пользователя и попытка их получения, состояние просмотра покупок
 @dp.message(Text("Список покупок"))
 async def goods_list(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -647,12 +679,17 @@ async def goods_list(message: types.Message, state: FSMContext):
             reply_markup=keyboard
         )
 
+        await message.answer(
+            text=f"Страница 1/{len_data}",
+        )
+
         await state.update_data(next_page=len_data)
         await state.update_data(now_page=-1)
     else:
         await message.answer(text=f"У Вас нет покупок...")
 
 
+# вывод списка доступных для покупки товаров в виде кнопок с содержанием информации о наименовании товара и его цене
 @dp.message(Text("Купить"))
 async def buy(message: types.Message, state: FSMContext):
     cur.execute("SELECT title, price FROM goods")
@@ -676,7 +713,7 @@ async def buy(message: types.Message, state: FSMContext):
     await message.answer(f"Выберите товар:", reply_markup=keyboard)
 
 
+# Запускаем бота и пропускаем все накопленные входящие
 async def main():
-    # Запускаем бота и пропускаем все накопленные входящие
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)

@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     time_to_top_up: int
     max_flows: int
     wallet: str
+    support: str
 
     class Config:
 
