@@ -157,13 +157,13 @@ async def page_manager(action, message, state):
     back = [types.KeyboardButton(text="✖ Назад"), ]
 
     buttons_full = [
-        types.KeyboardButton(text="⬅⬅"),
-        types.KeyboardButton(text="➡➡"),
+        types.KeyboardButton(text="⬅⬅⬅"),
+        types.KeyboardButton(text="➡➡➡"),
     ]
 
-    buttons_next = [types.KeyboardButton(text="➡➡"), ]
+    buttons_next = [types.KeyboardButton(text="➡➡➡"), ]
 
-    buttons_back = [types.KeyboardButton(text="⬅⬅"), ]
+    buttons_back = [types.KeyboardButton(text="⬅⬅⬅"), ]
 
     buttons_middle = [buttons_full, back, ]
     buttons_first = [buttons_next, back, ]
@@ -391,13 +391,13 @@ async def pay(message: Message, state: FSMContext):
 
 
 # кнопка для просмотра следующей записи в истории покупок
-@dp.message(OrderPage.next_page, Text('➡➡'))
+@dp.message(OrderPage.next_page, Text('➡➡➡'))
 async def next_page(message: types.Message, state: FSMContext):
     await page_manager(action=0, message=message, state=state)
 
 
 # кнопка для просмотра предыдущей записи в истории покупок
-@dp.message(OrderPage.next_page, Text('⬅⬅'))
+@dp.message(OrderPage.next_page, Text('⬅⬅⬅'))
 async def next_page(message: types.Message, state: FSMContext):
     await page_manager(action=1, message=message, state=state)
 
@@ -658,7 +658,7 @@ async def goods_list(message: types.Message, state: FSMContext):
 
         back = [types.KeyboardButton(text="✖ Назад"), ]
 
-        buttons_next = [types.KeyboardButton(text="➡➡"), ]
+        buttons_next = [types.KeyboardButton(text="➡➡➡"), ]
         buttons_first = [buttons_next, back, ]
 
         keyboard = types.ReplyKeyboardMarkup(
