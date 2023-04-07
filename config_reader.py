@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     yoo_token: SecretStr
     rucapcha_token: SecretStr
 
+    time_to_top_up: int
+    max_flows: int
+    wallet: str
+
     class Config:
 
         env_file = '.env'

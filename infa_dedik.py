@@ -345,8 +345,8 @@ async def check_proxy(proxy):
             return False
 
 
-flows = 0
-max_flows = 5
+flows = 0  # занятые потоки
+max_flows = config.max_flows  # максимум потоков
 
 
 async def get_request_data(message):
@@ -499,12 +499,16 @@ async def get_request_data(message):
 
 #
 
-time_to_top_up = 1  # время на пополнение
+time_to_top_up = config.time_to_top_up  # время на пополнение в минутах
 
 yoo_token = 'Bearer ' + config.yoo_token.get_secret_value()
+wallet = config.wallet
 
 bot = Bot(token=config.bot_token.get_secret_value(), parse_mode='HTML')
 dp = Dispatcher()
+
+available_payment_type = ["Из кошелька ЮMoney", "С банковской карты"]
+check_transaction_buttons = ["Я оплатил/а", "Отмена оплаты"]
 
 #
 
@@ -525,11 +529,8 @@ class ChoosingGoods(StatesGroup):
 
 
 class OrderPage(StatesGroup):
-    next_page = State()
-
-
-async def wallet():
-    return '4100116997512588'
+    next_page = State()  # длина списка покупок (я перепутал и мне лень переназывать)
+    now_page = State()
 
 
 async def user_profile(message):
@@ -575,12 +576,14 @@ async def main_menu(message):
 
 async def send_order(message, title, type_='default'):
 
+    data = 'Отсутствуют'
     if type_:
         if type_.lower() == 'ru_vds':
             result = asyncio.create_task(get_request_data(message))
             r = await result
 
-            await message.answer(r[1])
+            data = r[1]
+            await message.answer(data)
 
             if not r[0]:
                 return 'back'
@@ -591,14 +594,146 @@ async def send_order(message, title, type_='default'):
             result = asyncio.create_task(get_first_email_line(filename))
             r = await result
 
-            await message.answer(f'login: {r[0]}\npassword: {r[1]}')
+            data = f'login: {r[0]}\npassword: {r[1]}'
+
+            await message.answer(data)
 
     else:
         await message.answer(f'Спасибо за покупку!')
 
+    return data
 
-async def get_order_page(data):
-    pass
+
+async def parse_page(page_data):
+    data = page_data.split('__')
+
+    msg = f'<b>Наименование:</b> {data[0]}\n<b>Стоимость покупки:</b> {data[1]} руб.\n' \
+          f'<b>Дата и время:</b> {data[2]}\n<b>Данные:</b> {data[3]}'
+
+    return msg
+
+
+async def page_manager(action, message, state):
+
+    user_id = message.from_user.id
+    data = cur.execute(f"SELECT shop_list FROM users WHERE user_id = ?", (user_id,)).fetchall()[0][0]
+    data = data.split('___')[1:]
+
+    st = await state.get_data()
+
+    now_page = st["now_page"]
+    len_page = st["next_page"]
+
+    back = [types.KeyboardButton(text="Назад"), ]
+
+    buttons_full = [
+        types.KeyboardButton(text="<---"),
+        types.KeyboardButton(text="--->"),
+    ]
+
+    buttons_next = [types.KeyboardButton(text="--->"), ]
+
+    buttons_back = [types.KeyboardButton(text="<---"), ]
+
+    buttons_middle = [buttons_full, back, ]
+    buttons_first = [buttons_next, back, ]
+    buttons_last = [buttons_back, back, ]
+
+    if action == 0:
+
+        if abs(now_page) < len_page:
+
+            now_page -= 1
+            await state.update_data(now_page=now_page, )
+
+        if abs(now_page) < len_page:
+
+            page = data[now_page]
+            page = await parse_page(page)
+
+            keyboard = types.ReplyKeyboardMarkup(
+                keyboard=buttons_middle,
+                resize_keyboard=True,
+            )
+
+            await message.answer(
+                text=f"{page}",
+                reply_markup=keyboard
+            )
+
+        elif abs(now_page) == len_page:
+
+            page = data[now_page]
+            page = await parse_page(page)
+
+            keyboard = types.ReplyKeyboardMarkup(
+                keyboard=buttons_last,
+                resize_keyboard=True,
+            )
+
+            await message.answer(
+                text=f"{page}",
+                reply_markup=keyboard
+            )
+        else:
+            return
+
+    elif action == 1:
+
+        if abs(now_page) < len_page:
+            now_page += 1
+            await state.update_data(now_page=now_page, )
+
+        page = data[now_page]
+        page = await parse_page(page)
+
+        if abs(now_page) < len_page and (abs(now_page) > 1):
+
+            keyboard = types.ReplyKeyboardMarkup(
+                keyboard=buttons_middle,
+                resize_keyboard=True,
+            )
+
+            await message.answer(
+                text=f"{page}",
+                reply_markup=keyboard
+            )
+
+        elif abs(now_page) == 1:
+
+            keyboard = types.ReplyKeyboardMarkup(
+                keyboard=buttons_first,
+                resize_keyboard=True,
+            )
+
+            await message.answer(
+                text=f"{page}",
+                reply_markup=keyboard
+            )
+
+        elif abs(now_page) == len_page:
+
+            now_page += 1
+            page = data[now_page]
+            page = await parse_page(page)
+
+            await state.update_data(now_page=now_page, )
+
+            keyboard = types.ReplyKeyboardMarkup(
+                keyboard=buttons_middle,
+                resize_keyboard=True,
+            )
+
+            await message.answer(
+                text=f"{page}",
+                reply_markup=keyboard
+            )
+        else:
+            return
+
+    await message.answer(
+        text=f"{now_page}, {len_page}",
+    )
 
 
 # получаем баланс пользователя
@@ -618,7 +753,7 @@ async def cmd_start(message: types.Message):
     user_id = message.from_user.id
 
     command = "UPDATE users SET balance = ? WHERE user_id = ?"
-    balance = await get_balance(user_id)  # !от абуза!
+    balance = await get_balance(user_id)
     cur.execute(command, (balance + 100, user_id,))
     db.commit()
 
@@ -632,15 +767,19 @@ async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     # user_name = message.from_user.first_name
     user_full_name = message.from_user.full_name
+
+    reg = cur.execute(f"SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchall()
+
+    if not reg:
+        command = "INSERT INTO users (user_id) VALUES(?)"
+        cur.execute(command, (user_id,))
+        db.commit()
+
     logging.info(f'{user_id} {user_full_name} {time.asctime()}')
 
     await state.clear()
 
     await main_menu(message)
-
-    command = "INSERT INTO users (user_id) VALUES(?)"
-    cur.execute(command, (user_id, ))
-    db.commit()
 
     # await message.reply("Запуск!")
     # result_task = await asyncio.create_task(get_request_data())
@@ -652,10 +791,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
     await state.clear()
     await main_menu(message)
-
-
-available_payment_type = ["Из кошелька ЮMoney", "С банковской карты"]
-check_transaction_buttons = ["Я оплатил/а", "Отмена оплаты"]
 
 
 @dp.message(AddBalance.choosing_payment_type, F.text.in_(available_payment_type))
@@ -719,6 +854,16 @@ async def pay(message: Message, state: FSMContext):
         await state.set_state(ChoosingGoods.submit_buy)
 
 
+@dp.message(OrderPage.next_page, Text('--->'))
+async def next_page(message: types.Message, state: FSMContext):
+    await page_manager(action=0, message=message, state=state)
+
+
+@dp.message(OrderPage.next_page, Text('<---'))
+async def next_page(message: types.Message, state: FSMContext):
+    await page_manager(action=1, message=message, state=state)
+
+
 # покупка товара
 @dp.message(ChoosingGoods.submit_buy, Text("Подтвердить покупку"))
 async def submit(message: Message, state: FSMContext):
@@ -749,7 +894,6 @@ async def submit(message: Message, state: FSMContext):
     else:
 
         shop_list = cur.execute(f"SELECT shop_list FROM users WHERE user_id = ?", (user_id, )).fetchall()[0][0]
-        shop_list = f'{shop_list}___{title}__{price}__{str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))}'
 
         command = "UPDATE users SET balance = ? WHERE user_id = ?"
         balance = await get_balance(user_id)  # !от абуза!
@@ -771,6 +915,9 @@ async def submit(message: Message, state: FSMContext):
             db.commit()
 
         else:
+            t = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            shop_list = f'{shop_list}___{title}__{price}__{t}__{r}'
+
             command = "UPDATE users SET shop_list = ? WHERE user_id = ?"
             cur.execute(command, (shop_list, user_id,))
             db.commit()
@@ -807,7 +954,7 @@ async def add_balance(message: Message, state: FSMContext):
             kom = 0.01
 
         yoo_sum = add_sum + (add_sum * kom)
-        add_balance_link = f'https://yoomoney.ru/quickpay/confirm.xml?receiver={await wallet()}&quickpay-form=button' \
+        add_balance_link = f'https://yoomoney.ru/quickpay/confirm.xml?receiver={wallet}&quickpay-form=button' \
                            f'&paymentType={payment_type}&sum={yoo_sum}' \
                            f'&successURL=https://t.me/dedikfree_bot&label={comment}'
 
@@ -953,27 +1100,34 @@ async def goods_list(message: types.Message, state: FSMContext):
 
     if data:
         data = data.split('___')[1:]
-        await get_order_page(data)                                                          # ТУТ СПИСОК ПОКУПОК
+        len_data = len(data)
         await state.set_state(OrderPage.next_page)
 
-        buttons = [
-            [
-                types.KeyboardButton(text="<---"),
-                types.KeyboardButton(text="--->")
-            ],
-            [
-                types.KeyboardButton(text="Назад"),
-            ],
-        ]
+        back = [types.KeyboardButton(text="Назад"), ]
+
+        buttons_next = [types.KeyboardButton(text="--->"), ]
+        buttons_first = [buttons_next, back, ]
+
         keyboard = types.ReplyKeyboardMarkup(
-            keyboard=buttons,
+            keyboard=buttons_first,
             resize_keyboard=True,
         )
 
+        page = await parse_page(page_data=data[-1])
+
+        if len_data == 1:
+            keyboard = types.ReplyKeyboardMarkup(
+                keyboard=[back, ],
+                resize_keyboard=True,
+            )
+
         await message.answer(
-            text=f"{data[-1]}",
+            text=f"{page}",
             reply_markup=keyboard
         )
+
+        await state.update_data(next_page=len_data)
+        await state.update_data(now_page=-1)
     else:
         await message.answer(text=f"У Вас нет покупок...")
 
