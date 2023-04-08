@@ -344,16 +344,16 @@ async def get_request_data(message):
 
     else:
 
-        result_task = asyncio.create_task(get_first_email_line('proxy.txt'))
-        r = await result_task
-        proxy = f'{r[0]}:{r[1]}'
-        print(proxy)
-
-        result_task = asyncio.create_task(check_proxy(proxy))
-        r = await result_task
-
-        if not r:
-            return False, 'Прокси не прошел проверку'
+        # result_task = asyncio.create_task(get_first_email_line('proxy.txt'))
+        # r = await result_task
+        # proxy = f'{r[0]}:{r[1]}'
+        # print(proxy)
+        #
+        # result_task = asyncio.create_task(check_proxy(proxy))
+        # r = await result_task
+        #
+        # if not r:
+        #     return False, 'Прокси не прошел проверку'
 
         flows += 1
         await message.answer(f'Запуск скрипта.. сейчас потоков занято: {flows}/{max_flows}')
@@ -361,13 +361,7 @@ async def get_request_data(message):
         done = 0
 
         future = asyncio.Future()
-        browser = await launch({
-            'args': [
-                f'--proxy-server=https://{proxy}',
-                '--no-sandbox'
-            ],
-            'ignoreHTTPSErrors': True
-        })
+        browser = await launch()
 
         page = await browser.newPage()
         await page.setViewport({'width': random.randint(1024, 1920), 'height': random.randint(768, 1080)})  # ##########
