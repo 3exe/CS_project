@@ -1,14 +1,9 @@
-import asyncio
-import logging
-import random
-import string
 import time
 import datetime
 import sqlite3
-import aiofiles
+
 import csv
 
-import aiohttp
 from aiogram import Bot, Dispatcher, types
 from aiogram import Router, F
 from aiogram.filters import Text
@@ -19,7 +14,6 @@ from aiogram.types import Message
 
 from aiogram.utils.markdown import hlink
 
-from config_reader import config
 from ruvds import *
 
 time_to_top_up = config.time_to_top_up  # время на пополнение в минутах
@@ -41,7 +35,7 @@ cur = db.cursor()
 router = Router()
 
 
-# состояние поплнения
+# состояние пополнения
 class AddBalance(StatesGroup):
     choosing_payment_type = State()
     choosing_sum = State()
@@ -359,7 +353,7 @@ async def wait_add_balance(message):
         await message.answer(text="Время на оплату вышло!")
 
 
-# состояние выбора товара после нажатия кнопки "💵  Купить"
+# состояние выбора товара после нажатия кнопки "💵 Купить"
 @dp.message(ChoosingGoods.choosing_goods)
 async def pay(message: Message, state: FSMContext):
     cur.execute("SELECT title, price FROM goods")
@@ -547,7 +541,7 @@ async def yoo_check():
             return response_text["operations"]
 
 
-# проверка истинности заявления об оплате счета на поплнение баланса и его актуальности
+# проверка истинности заявления об оплате счета на пополнение баланса и его актуальности
 @dp.message(AddBalance.check_transaction, Text(check_transaction_buttons[0]))
 async def add_balance(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -576,7 +570,7 @@ async def add_balance(message: Message, state: FSMContext):
                     writer = csv.writer(file)
                     t = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
                     await writer.writerow([user_id, round(amount, 1), t])
-                    file.close()
+                    await file.close()
 
                 await message.answer(text=f"📈 На ваш баланс зачислено {amount} рублей !!1")
                 await main_menu(message)
@@ -632,7 +626,7 @@ async def add_balance(message: Message, state: FSMContext):
     await state.set_state(AddBalance.choosing_payment_type)
 
 
-# вывод ссылки на тех. поддержку
+# Вывод ссылки на тех. поддержку
 @dp.message(Text("❓ Поддержка"))
 async def helping(message: types.Message):
     await message.answer(f"📩 По всем вопросам: @{support}")
