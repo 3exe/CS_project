@@ -26,23 +26,12 @@ logging.basicConfig(level=logging.INFO)
 #                                                                                                                   #
 #####################################################################################################################
 
-def generate_session_storage(length=10):
-    # Generate a random alphanumeric string of given length
+
+async def generate_storage(length=10):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
-session_storage = generate_session_storage()
-
-
-def generate_local_storage(length=10):
-    # Generate a random alphanumeric string of given length
-    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
-
-
-local_storage = generate_local_storage()
-
-
-def generate_open_db():
+async def generate_open_db():
     db_name = ''.join(random.choices(string.ascii_lowercase, k=8))
     db_version = random.randint(1, 100)
     display_name = ''.join(random.choices(string.ascii_lowercase, k=8))
@@ -50,40 +39,13 @@ def generate_open_db():
     return f"{db_name}::{db_version}::{display_name}::{estimated_size}"
 
 
-print(generate_open_db())
-
-
-def generate_fingerprint():
+async def generate_fingerprint():
     components = [
-        "User-Agent",
-        "language",
-        "colorDepth",
-        "deviceMemory",
-        "hardwareConcurrency",
-        "screenResolution",
-        "availableScreenResolution",
-        "timezoneOffset",
-        "timezone",
-        "sessionStorage",
-        "localStorage",
-        "indexedDb",
-        "addBehavior",
-        "openDatabase",
-        "cpuClass",
-        "platform",
-        "doNotTrack",
-        "plugins",
-        "canvas",
-        "webgl",
-        "webglVendorAndRenderer",
-        "adBlock",
-        "hasLiedLanguages",
-        "hasLiedResolution",
-        "hasLiedOs",
-        "hasLiedBrowser",
-        "touchSupport",
-        "fonts",
-        "audio"
+        "User-Agent", "language", "colorDepth",
+        "deviceMemory", "hardwareConcurrency", "screenResolution", "availableScreenResolution", "timezoneOffset",
+        "timezone", "sessionStorage", "localStorage", "indexedDb", "addBehavior", "openDatabase", "cpuClass",
+        "platform", "doNotTrack", "plugins", "canvas", "webgl", "webglVendorAndRenderer", "adBlock",
+        "hasLiedLanguages", "hasLiedResolution", "hasLiedOs", "hasLiedBrowser", "touchSupport", "fonts", "audio"
     ]
     fingerprint = {}
     for component in components:
@@ -96,15 +58,15 @@ def generate_fingerprint():
         elif component == "timezone":
             fingerprint[component] = faker.timezone()
         elif component == "sessionStorage":
-            fingerprint[component] = session_storage
+            fingerprint[component] = await generate_storage()
         elif component == "localStorage":
-            fingerprint[component] = local_storage
+            fingerprint[component] = await generate_storage()
         elif component == "indexedDb":
             fingerprint[component] = "IDBFactory, IDBKeyRange, indexedDB.open"
         elif component == "addBehavior":
             fingerprint[component] = str(random.choice([True, False]))
         elif component == "openDatabase":
-            fingerprint[component] = generate_open_db()
+            fingerprint[component] = await generate_open_db()
         elif component == "doNotTrack":
             fingerprint[component] = str(random.choice([None, "1", "Unspecified"]))
         elif component in ["webglVendorAndRenderer", "canvas"]:
@@ -119,12 +81,8 @@ def generate_fingerprint():
             fingerprint[component] = "16"
         else:
             fingerprint[component] = str(random.randint(0, 99999999))
+    print(fingerprint)
     return fingerprint
-
-
-print(generate_fingerprint())
-
-fp = generate_fingerprint()
 
 key_capcha = config.rucapcha_token.get_secret_value()
 #####################################################################################################################
@@ -336,6 +294,7 @@ max_flows = config.max_flows  # максимум потоков
 
 
 async def get_request_data(message):
+    fp = await generate_fingerprint()
 
     global flows
 
